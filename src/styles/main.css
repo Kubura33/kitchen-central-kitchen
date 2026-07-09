@@ -1,0 +1,67 @@
+/*
+ * Brand tokens mirrored from the Central Kitchen Flutter app
+ * (lib/core/constants/app_colors.dart + lib/core/theme/app_theme.dart).
+ */
+
+@font-face {
+  font-family: 'Figtree';
+  src: url('../assets/fonts/Figtree.ttf') format('truetype');
+  font-weight: 300 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Caveat Brush';
+  src: url('../assets/fonts/CaveatBrush-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  --ck-orange: #fb582a;
+  --ck-orange-pressed: #e04718;
+  --ck-orange-selected: rgb(251 88 42 / 0.15);
+  --ck-green: #1d7235;
+  --ck-brown: #371c18;
+  --ck-bg: #faf8f4;
+  --ck-card: #ffffff;
+  --ck-text: #1a1a1a;
+  --ck-text-secondary: #6e6b67;
+  --ck-text-light: #a09c98;
+  --ck-divider: #eae8e4;
+  --ck-danger: #c62828;
+
+  --ck-radius-card: 16px;
+  --ck-radius-button: 14px;
+  --ck-radius-input: 12px;
+  --ck-radius-chip: 20px;
+
+  --ck-shadow-card: 0 4px 10px rgb(0 0 0 / 0.05);
+  --ck-shadow-deep: 0 6px 18px rgb(0 0 0 / 0.1);
+
+  font-family: 'Figtree', system-ui, sans-serif;
+  color: var(--ck-text);
+  background-color: var(--ck-bg);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+button {
+  font-family: inherit;
+}
