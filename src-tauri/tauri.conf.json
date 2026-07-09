@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.centralkitchen.rs http://localhost:8000 http://127.0.0.1:8000"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.penguincodes.com https://api.centralkitchen.rs http://localhost:8000 http://127.0.0.1:8000"
     }
   },
   "bundle": {
@@ -34,19 +34,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true,
     "windows": {
       "nsis": {
         "installMode": "currentUser"
       }
-    }
-  },
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/Kubura33/kitchen-central-kitchen/releases/latest/download/latest.json"
-      ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJCMzNFRkEwMzg5NDhFOTUKUldTVmpwUTRvTzh6SzVuZ0FRSnBMMGUvMUhTV25MOUcrQjRGSUtaZHF4bGxRVnpYaDVQVmcyWkEK"
     }
   }
 }

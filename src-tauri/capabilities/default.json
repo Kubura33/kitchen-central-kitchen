@@ -4,8 +4,6 @@
   "description": "Permissions for the main kitchen dashboard window.",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "updater:default",
-    "process:default"
+    "core:default"
   ]
 }

@@ -53,10 +53,9 @@ style app:
   for muting).
 - **Autostart** — the app registers itself to launch on Windows login, and a
   second launch just focuses the running window (single instance).
-- **Self-updating** — on every start it checks
-  `github.com/Kubura33/kitchen-central-kitchen/releases/latest/download/latest.json`,
-  silently installs any newer release and relaunches. Offline or missing
-  feed = it just starts normally.
+- **Manual updates** — to update the kitchen PC, run a newer installer .exe;
+  it installs over the previous version and keeps the login (the token lives
+  in the webview's localStorage, which the installer does not touch).
 
 The desktop webview's origin (`http://tauri.localhost`) is already in the
 API's default `CORS_ALLOWED_ORIGINS`.
@@ -69,41 +68,26 @@ docs). Then:
 
 ```shell
 npm run tauri dev      # dev app against the vite dev server
-npm run tauri build    # local installer build (unsigned updater artifacts)
+npm run tauri build    # local installer build
 ```
 
 ### Releasing a new version
 
 Releases are built by GitHub Actions (`.github/workflows/release.yml`) on a
-Windows runner — no local Rust needed.
-
-One-time setup:
-
-1. Push this repo to `github.com/Kubura33/kitchen-central-kitchen`.
-   **The repo must be public** so the kitchen PC can download
-   `latest.json` and the installer without authentication. If you want the
-   code private instead, host those two release files on the
-   `kitchen.centralkitchen.rs` subdomain and change
-   `plugins.updater.endpoints` in `src-tauri/tauri.conf.json`.
-2. Add two repository secrets (Settings → Secrets and variables → Actions):
-   - `TAURI_SIGNING_PRIVATE_KEY` — the contents of
-     `~/.tauri/kitchen-central-kitchen.key` (updater signing key; **never
-     commit it** — losing it means installed apps can't update anymore).
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — empty string (the key has no
-     password).
+Windows runner — no local Rust and no repository secrets needed. The repo
+can stay private.
 
 Per release:
 
 1. Bump `version` in `src-tauri/tauri.conf.json` (and `package.json`).
 2. Commit, then tag and push: `git tag v0.2.0 && git push origin master v0.2.0`.
-3. CI runs the tests, builds the NSIS installer, signs the updater artifact
-   and publishes the GitHub release. Installed apps pick it up on their next
-   launch.
+3. CI runs the tests, builds the NSIS installer and publishes the GitHub
+   release. Download the .exe from the release and run it on the kitchen PC
+   — it updates the installed app in place.
 
 The installer is not Authenticode-signed (that needs a paid certificate), so
-Windows SmartScreen shows a warning **once, at install time** — click
-"More info → Run anyway". Updates delivered through the built-in updater do
-not re-trigger it.
+Windows SmartScreen may show a warning when running it — click
+"More info → Run anyway".
 
 ## How pickups appear here
 

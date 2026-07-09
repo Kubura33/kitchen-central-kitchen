@@ -1,10 +1,7 @@
 # Builds the Windows desktop app and publishes a GitHub release whenever a
-# v* tag is pushed. The release includes the NSIS installer, the signed
-# updater artifact and latest.json — the feed the installed apps poll.
-#
-# Required repository secrets:
-#   TAURI_SIGNING_PRIVATE_KEY          contents of ~/.tauri/kitchen-central-kitchen.key
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD empty string (key was generated without one)
+# v* tag is pushed. The release contains the NSIS installer (.exe) — download
+# it and run it on the kitchen PC to install or update (it installs over the
+# previous version). No secrets are required.
 name: Release desktop app
 
 on:
@@ -44,13 +41,11 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Central Kitchen Kuhinja ${{ github.ref_name }}'
           releaseBody: >
-            Instalacija: preuzeti .exe ispod i pokrenuti ga. Instalirana
-            aplikacija se ubuduće ažurira sama pri pokretanju.
+            Instalacija ili ažuriranje: preuzeti .exe ispod i pokrenuti ga
+            (instalira se preko postojeće verzije).
           releaseDraft: false
           prerelease: false
