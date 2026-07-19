@@ -68,12 +68,27 @@ describe('OrderCard', () => {
     expect(wrapper.get('button').attributes('disabled')).toBeDefined()
   })
 
-  it('shows the ready tag instead of the button for ready orders', () => {
+  it('emits mark-picked-up from the ready-variant button', async () => {
     const wrapper = mount(OrderCard, {
       props: { order: { ...order, status: 'ready' }, variant: 'ready' },
     })
 
+    expect(wrapper.text()).toContain('Spremno')
+    await wrapper.get('button').trigger('click')
+
+    expect(wrapper.emitted('mark-picked-up')).toEqual([[7]])
+    expect(wrapper.emitted('mark-done')).toBeUndefined()
+  })
+
+  it('shows no button for picked-up orders', () => {
+    const wrapper = mount(OrderCard, {
+      props: {
+        order: { ...order, status: 'picked_up' },
+        variant: 'picked-up',
+      },
+    })
+
     expect(wrapper.find('button').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Spremno za preuzimanje')
+    expect(wrapper.text()).toContain('Preuzeto')
   })
 })

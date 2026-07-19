@@ -12,6 +12,7 @@ interface Props {
 
 interface Emits {
   'mark-done': [orderId: number]
+  'mark-picked-up': [orderId: number]
 }
 
 const props = defineProps<Props>()
@@ -89,9 +90,17 @@ const paymentLabel = computed(() =>
       >
         {{ isMarking ? 'Označavanje…' : 'Označi kao gotovo' }}
       </button>
-      <span v-else-if="variant === 'ready'" class="order-ready-tag">
-        ✓ Spremno za preuzimanje
-      </span>
+      <template v-else-if="variant === 'ready'">
+        <span class="order-ready-tag">✓ Spremno</span>
+        <button
+          class="order-pickup-button"
+          type="button"
+          :disabled="isMarking"
+          @click="$emit('mark-picked-up', order.id)"
+        >
+          {{ isMarking ? 'Označavanje…' : 'Označi kao preuzeto' }}
+        </button>
+      </template>
       <span v-else class="order-picked-up-tag">Preuzeto</span>
     </footer>
   </article>
@@ -226,6 +235,8 @@ const paymentLabel = computed(() =>
 .order-footer {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
 }
 
 .order-done-button {
@@ -253,6 +264,28 @@ const paymentLabel = computed(() =>
   color: var(--ck-green);
   font-weight: 700;
   font-size: 14px;
+  margin-right: auto;
+}
+
+.order-pickup-button {
+  height: 46px;
+  padding: 0 22px;
+  border: none;
+  border-radius: var(--ck-radius-button);
+  background: var(--ck-green);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.order-pickup-button:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+.order-pickup-button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .order-picked-up-tag {

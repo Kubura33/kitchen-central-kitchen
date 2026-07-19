@@ -132,6 +132,44 @@ describe('useOrders', () => {
     expect(orders.errorMessage.value).toBe('Porudzbina je vec preuzeta.')
   })
 
+  it('optimistically marks an order picked up and confirms via the API', async () => {
+    const pickedUp = { ...order(1, 'ready'), status: 'picked_up' as const }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(pageOf([order(1, 'ready')])))
+      .mockResolvedValueOnce(jsonResponse({ data: pickedUp }))
+    vi.stubGlobal('fetch', fetchMock)
+    const orders = useOrders()
+    await orders.refreshNow()
+
+    await orders.markPickedUp(1)
+
+    expect(orders.readyOrders.value).toHaveLength(0)
+    expect(orders.recentlyPickedUp.value.map((o) => o.id)).toEqual([1])
+    expect(orders.recentlyPickedUp.value[0]?.status).toBe('picked_up')
+    const patchCall = fetchMock.mock.calls[1]
+    expect(String(patchCall?.[0])).toContain('/orders/1/picked-up')
+    expect(patchCall?.[1]?.method).toBe('PATCH')
+  })
+
+  it('rolls back the picked-up move when the API rejects it', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(pageOf([order(1, 'ready')])))
+      .mockResolvedValueOnce(
+        jsonResponse({ message: 'Greška na serveru.' }, 500),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+    const orders = useOrders()
+    await orders.refreshNow()
+
+    await expect(orders.markPickedUp(1)).rejects.toThrow()
+
+    expect(orders.readyOrders.value.map((o) => o.id)).toEqual([1])
+    expect(orders.recentlyPickedUp.value).toHaveLength(0)
+    expect(orders.errorMessage.value).not.toBeNull()
+  })
+
   it('reports the offline state when polling fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
     const orders = useOrders()

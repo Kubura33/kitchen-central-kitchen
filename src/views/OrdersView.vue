@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import OrderCard from '../components/OrderCard.vue'
 import StatusBar from '../components/StatusBar.vue'
 import { useAuth } from '../composables/useAuth'
@@ -21,15 +21,34 @@ const {
   start,
   stop,
   markDone,
+  markPickedUp,
   acknowledgeNewOrder,
 } = useOrders({ onNewOrders: sound.playNewOrder })
 
 onMounted(start)
 onBeforeUnmount(stop)
 
+const readySearch = ref('')
+
+const filteredReadyOrders = computed(() => {
+  const query = readySearch.value.trim()
+  if (query === '') return readyOrders.value
+  return readyOrders.value.filter((order) =>
+    order.pickup_code.includes(query),
+  )
+})
+
 async function handleMarkDone(orderId: number): Promise<void> {
   try {
     await markDone(orderId)
+  } catch {
+    // The error is already surfaced through errorMessage.
+  }
+}
+
+async function handleMarkPickedUp(orderId: number): Promise<void> {
+  try {
+    await markPickedUp(orderId)
   } catch {
     // The error is already surfaced through errorMessage.
   }
@@ -80,15 +99,29 @@ async function handleMarkDone(orderId: number): Promise<void> {
             Spremno za preuzimanje
             <span class="orders-count">{{ readyOrders.length }}</span>
           </h2>
+          <input
+            v-if="readyOrders.length > 0"
+            v-model="readySearch"
+            class="orders-search"
+            type="search"
+            inputmode="numeric"
+            placeholder="Pretraži po kodu za preuzimanje…"
+            aria-label="Pretraga po kodu za preuzimanje"
+          />
           <p v-if="readyOrders.length === 0" class="orders-empty">
             Nema spremnih porudžbina.
           </p>
+          <p v-else-if="filteredReadyOrders.length === 0" class="orders-empty">
+            Nijedna spremna porudžbina ne odgovara kodu „{{ readySearch }}”.
+          </p>
           <div class="orders-grid">
             <OrderCard
-              v-for="order in readyOrders"
+              v-for="order in filteredReadyOrders"
               :key="order.id"
               :order="order"
               variant="ready"
+              :is-marking="markingIds.has(order.id)"
+              @mark-picked-up="handleMarkPickedUp"
             />
           </div>
         </section>
@@ -171,5 +204,28 @@ async function handleMarkDone(orderId: number): Promise<void> {
 .orders-empty {
   color: var(--ck-text-secondary);
   margin: 0;
+}
+
+.orders-search {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  font-size: 15px;
+  color: var(--ck-text);
+  background: var(--ck-card);
+  border: 1px solid var(--ck-divider);
+  border-radius: var(--ck-radius-button);
+}
+
+.orders-search:focus {
+  outline: none;
+  border-color: var(--ck-green);
+  box-shadow: 0 0 0 3px rgb(29 114 53 / 0.15);
+}
+
+.orders-search::placeholder {
+  color: var(--ck-text-light);
 }
 </style>

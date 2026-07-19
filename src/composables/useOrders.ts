@@ -138,6 +138,47 @@ export function useOrders(options: UseOrdersOptions = {}) {
     }
   }
 
+  async function markPickedUp(orderId: number): Promise<void> {
+    if (markingIds.value.has(orderId)) return
+    markingIds.value = new Set([...markingIds.value, orderId])
+
+    const previousOrders = orders.value
+    const previousRecent = recentlyPickedUp.value
+    const order = orders.value.find((entry) => entry.id === orderId)
+
+    // Optimistic move to the recently picked-up list; rolled back on failure.
+    if (order !== undefined) {
+      orders.value = orders.value.filter((entry) => entry.id !== orderId)
+      pickedUpAt.set(orderId, Date.now())
+      recentlyPickedUp.value = [
+        {
+          ...order,
+          status: 'picked_up' as const,
+          picked_up_at: new Date().toISOString(),
+        },
+        ...recentlyPickedUp.value,
+      ]
+    }
+
+    try {
+      await request<{ data: Order }>(`/orders/${orderId}/picked-up`, {
+        method: 'PATCH',
+      })
+      acknowledgeNewOrder(orderId)
+    } catch (error) {
+      orders.value = previousOrders
+      recentlyPickedUp.value = previousRecent
+      pickedUpAt.delete(orderId)
+      errorMessage.value =
+        error instanceof Error ? error.message : 'Označavanje nije uspelo.'
+      throw error
+    } finally {
+      const next = new Set(markingIds.value)
+      next.delete(orderId)
+      markingIds.value = next
+    }
+  }
+
   function scheduleNext(): void {
     if (stopped) return
     timer = setTimeout(async () => {
@@ -187,6 +228,7 @@ export function useOrders(options: UseOrdersOptions = {}) {
     stop,
     refreshNow,
     markDone,
+    markPickedUp,
     acknowledgeNewOrder,
   }
 }
