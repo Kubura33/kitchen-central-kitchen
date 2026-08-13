@@ -32,8 +32,11 @@ export function useOrders(options: UseOrdersOptions = {}) {
   const markingIds = ref<Set<number>>(new Set())
 
   let knownIds: Set<number> | null = null
-  let pickedUpAt = new Map<number, number>()
+  const pickedUpAt = new Map<number, number>()
   let timer: ReturnType<typeof setTimeout> | null = null
+  let pollingPromise: Promise<void> | null = null
+  let pollQueued = false
+  let mutationGeneration = 0
   let stopped = false
 
   const preparingOrders = computed(() =>
@@ -45,15 +48,54 @@ export function useOrders(options: UseOrdersOptions = {}) {
     orders.value.filter((order) => order.status === 'ready').sort(byNewestFirst),
   )
 
-  async function poll(): Promise<void> {
+  /**
+   * Coalesces timer, focus and manual refreshes into one active request plus at
+   * most one follow-up. Serial polling prevents older GET responses from
+   * overtaking newer GET responses; the mutation generation below handles GET
+   * responses that overlap a ready/picked-up PATCH.
+   */
+  function poll(): Promise<void> {
+    if (pollingPromise !== null) {
+      pollQueued = true
+      return pollingPromise
+    }
+
+    pollingPromise = runPollLoop()
+    return pollingPromise
+  }
+
+  async function runPollLoop(): Promise<void> {
+    try {
+      do {
+        pollQueued = false
+        await pollOnce()
+      } while (pollQueued && !stopped)
+    } finally {
+      pollingPromise = null
+    }
+  }
+
+  async function pollOnce(): Promise<void> {
+    const generationAtStart = mutationGeneration
+
     try {
       const page = await request<Paginated<Order>>('/orders', {
         query: { status: 'pending', per_page: 100 },
       })
-      applyServerOrders(page.data)
+
       isOnline.value = true
-      errorMessage.value = null
-      lastUpdatedAt.value = new Date()
+
+      // A mutation that started or completed while this GET was running owns
+      // the newer state. Discard the stale snapshot; the mutation queues a
+      // fresh poll after its PATCH succeeds.
+      if (
+        generationAtStart === mutationGeneration &&
+        markingIds.value.size === 0
+      ) {
+        applyServerOrders(page.data)
+        errorMessage.value = null
+        lastUpdatedAt.value = new Date()
+      }
     } catch (error) {
       isOnline.value = false
       errorMessage.value =
@@ -101,6 +143,15 @@ export function useOrders(options: UseOrdersOptions = {}) {
     })
   }
 
+  function storeRecentlyPickedUp(order: Order, pickedUpTimestamp: number): void {
+    pickedUpAt.set(order.id, pickedUpTimestamp)
+    recentlyPickedUp.value = [
+      order,
+      ...recentlyPickedUp.value.filter((entry) => entry.id !== order.id),
+    ]
+    pruneRecentlyPickedUp(pickedUpTimestamp)
+  }
+
   /** Clears the new-order highlight, e.g. after the staff saw the card. */
   function acknowledgeNewOrder(orderId: number): void {
     if (!newOrderIds.value.has(orderId)) return
@@ -112,8 +163,10 @@ export function useOrders(options: UseOrdersOptions = {}) {
   async function markDone(orderId: number): Promise<void> {
     if (markingIds.value.has(orderId)) return
     markingIds.value = new Set([...markingIds.value, orderId])
+    mutationGeneration += 1
 
     const previous = orders.value
+    let succeeded = false
     // Optimistic move to the ready column; rolled back on failure.
     orders.value = orders.value.map((order) =>
       order.id === orderId
@@ -122,10 +175,15 @@ export function useOrders(options: UseOrdersOptions = {}) {
     )
 
     try {
-      await request<{ data: Order }>(`/orders/${orderId}/ready`, {
-        method: 'PATCH',
-      })
+      const response = await request<{ data: Order }>(
+        `/orders/${orderId}/ready`,
+        { method: 'PATCH' },
+      )
+      orders.value = orders.value.map((order) =>
+        order.id === orderId ? response.data : order,
+      )
       acknowledgeNewOrder(orderId)
+      succeeded = true
     } catch (error) {
       orders.value = previous
       errorMessage.value =
@@ -135,40 +193,56 @@ export function useOrders(options: UseOrdersOptions = {}) {
       const next = new Set(markingIds.value)
       next.delete(orderId)
       markingIds.value = next
+      mutationGeneration += 1
+      if (succeeded) void poll()
     }
   }
 
   async function markPickedUp(orderId: number): Promise<void> {
     if (markingIds.value.has(orderId)) return
     markingIds.value = new Set([...markingIds.value, orderId])
+    mutationGeneration += 1
 
     const previousOrders = orders.value
     const previousRecent = recentlyPickedUp.value
+    const previousPickedUpAt = pickedUpAt.get(orderId)
     const order = orders.value.find((entry) => entry.id === orderId)
+    let succeeded = false
 
     // Optimistic move to the recently picked-up list; rolled back on failure.
     if (order !== undefined) {
       orders.value = orders.value.filter((entry) => entry.id !== orderId)
-      pickedUpAt.set(orderId, Date.now())
-      recentlyPickedUp.value = [
+      const optimisticTimestamp = Date.now()
+      storeRecentlyPickedUp(
         {
           ...order,
           status: 'picked_up' as const,
           picked_up_at: new Date().toISOString(),
         },
-        ...recentlyPickedUp.value,
-      ]
+        optimisticTimestamp,
+      )
     }
 
     try {
-      await request<{ data: Order }>(`/orders/${orderId}/picked-up`, {
-        method: 'PATCH',
-      })
+      const response = await request<{ data: Order }>(
+        `/orders/${orderId}/picked-up`,
+        { method: 'PATCH' },
+      )
+      orders.value = orders.value.filter((entry) => entry.id !== orderId)
+      storeRecentlyPickedUp(
+        response.data,
+        pickedUpAt.get(orderId) ?? Date.now(),
+      )
       acknowledgeNewOrder(orderId)
+      succeeded = true
     } catch (error) {
       orders.value = previousOrders
       recentlyPickedUp.value = previousRecent
-      pickedUpAt.delete(orderId)
+      if (previousPickedUpAt === undefined) {
+        pickedUpAt.delete(orderId)
+      } else {
+        pickedUpAt.set(orderId, previousPickedUpAt)
+      }
       errorMessage.value =
         error instanceof Error ? error.message : 'Označavanje nije uspelo.'
       throw error
@@ -176,6 +250,8 @@ export function useOrders(options: UseOrdersOptions = {}) {
       const next = new Set(markingIds.value)
       next.delete(orderId)
       markingIds.value = next
+      mutationGeneration += 1
+      if (succeeded) void poll()
     }
   }
 

@@ -7,4 +7,16 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
   },
+  server: {
+    port: 5173,
+    strictPort: true,
+
+    proxy: {
+      '/api': {
+        target: 'https://api.centralkitchen.rs',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
+  },
 })

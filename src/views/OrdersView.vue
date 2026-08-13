@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import OrderCard from '../components/OrderCard.vue'
+import OrderGroup from '../components/OrderGroup.vue'
 import StatusBar from '../components/StatusBar.vue'
 import { useAuth } from '../composables/useAuth'
 import { useOrders } from '../composables/useOrders'
 import { useSound } from '../composables/useSound'
+import { groupOrdersByCompany } from '../utils/order-groups'
 
 const { user, logout } = useAuth()
 const sound = useSound()
@@ -37,6 +38,14 @@ const filteredReadyOrders = computed(() => {
     order.pickup_code.includes(query),
   )
 })
+
+const preparingGroups = computed(() =>
+  groupOrdersByCompany(preparingOrders.value),
+)
+const readyGroups = computed(() => groupOrdersByCompany(filteredReadyOrders.value))
+const recentlyPickedUpGroups = computed(() =>
+  groupOrdersByCompany(recentlyPickedUp.value),
+)
 
 async function handleMarkDone(orderId: number): Promise<void> {
   try {
@@ -80,18 +89,17 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
           <p v-if="preparingOrders.length === 0" class="orders-empty">
             Nema porudžbina u pripremi.
           </p>
-          <div class="orders-grid">
-            <OrderCard
-              v-for="order in preparingOrders"
-              :key="order.id"
-              :order="order"
-              variant="preparing"
-              :is-marking="markingIds.has(order.id)"
-              :is-new="newOrderIds.has(order.id)"
-              @mark-done="handleMarkDone"
-              @click="acknowledgeNewOrder(order.id)"
-            />
-          </div>
+          <OrderGroup
+            v-for="group in preparingGroups"
+            :key="group.key"
+            :orders="group.orders"
+            :company="group.company"
+            variant="preparing"
+            :marking-ids="markingIds"
+            :new-order-ids="newOrderIds"
+            @mark-done="handleMarkDone"
+            @acknowledge-new="acknowledgeNewOrder"
+          />
         </section>
 
         <section class="orders-section">
@@ -114,28 +122,27 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
           <p v-else-if="filteredReadyOrders.length === 0" class="orders-empty">
             Nijedna spremna porudžbina ne odgovara kodu „{{ readySearch }}”.
           </p>
-          <div class="orders-grid">
-            <OrderCard
-              v-for="order in filteredReadyOrders"
-              :key="order.id"
-              :order="order"
-              variant="ready"
-              :is-marking="markingIds.has(order.id)"
-              @mark-picked-up="handleMarkPickedUp"
-            />
-          </div>
+          <OrderGroup
+            v-for="group in readyGroups"
+            :key="group.key"
+            :orders="group.orders"
+            :company="group.company"
+            variant="ready"
+            :marking-ids="markingIds"
+            @mark-picked-up="handleMarkPickedUp"
+          />
         </section>
 
         <section v-if="recentlyPickedUp.length > 0" class="orders-section">
           <h2 class="orders-heading orders-heading--muted">Nedavno preuzeto</h2>
-          <div class="orders-grid">
-            <OrderCard
-              v-for="order in recentlyPickedUp"
-              :key="order.id"
-              :order="order"
-              variant="picked-up"
-            />
-          </div>
+          <OrderGroup
+            v-for="group in recentlyPickedUpGroups"
+            :key="group.key"
+            :orders="group.orders"
+            :company="group.company"
+            variant="picked-up"
+            :marking-ids="markingIds"
+          />
         </section>
       </template>
     </main>
@@ -193,12 +200,6 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
   border-radius: var(--ck-radius-chip);
   font-size: 13px;
   padding: 2px 10px;
-}
-
-.orders-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
 }
 
 .orders-empty {

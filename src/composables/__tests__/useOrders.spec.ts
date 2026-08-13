@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { useOrders } from '../useOrders'
 import type { Order } from '../../api/types'
 
@@ -41,6 +42,17 @@ function pageOf(orders: Order[]): unknown {
       total: orders.length,
     },
   }
+}
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T | PromiseLike<T>) => void
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver
+  })
+  return { promise, resolve }
 }
 
 describe('useOrders', () => {
@@ -101,11 +113,13 @@ describe('useOrders', () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(pageOf([order(1)])))
       .mockResolvedValueOnce(jsonResponse({ data: order(1, 'ready') }))
+      .mockResolvedValueOnce(jsonResponse(pageOf([order(1, 'ready')])))
     vi.stubGlobal('fetch', fetchMock)
     const orders = useOrders()
     await orders.refreshNow()
 
     await orders.markDone(1)
+    await flushPromises()
 
     expect(orders.preparingOrders.value).toHaveLength(0)
     expect(orders.readyOrders.value.map((o) => o.id)).toEqual([1])
@@ -133,16 +147,22 @@ describe('useOrders', () => {
   })
 
   it('optimistically marks an order picked up and confirms via the API', async () => {
-    const pickedUp = { ...order(1, 'ready'), status: 'picked_up' as const }
+    const pickedUp = {
+      ...order(1, 'ready'),
+      status: 'picked_up' as const,
+      picked_up_at: '2026-07-04T12:05:00Z',
+    }
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(pageOf([order(1, 'ready')])))
       .mockResolvedValueOnce(jsonResponse({ data: pickedUp }))
+      .mockResolvedValueOnce(jsonResponse(pageOf([])))
     vi.stubGlobal('fetch', fetchMock)
     const orders = useOrders()
     await orders.refreshNow()
 
     await orders.markPickedUp(1)
+    await flushPromises()
 
     expect(orders.readyOrders.value).toHaveLength(0)
     expect(orders.recentlyPickedUp.value.map((o) => o.id)).toEqual([1])
@@ -168,6 +188,86 @@ describe('useOrders', () => {
     expect(orders.readyOrders.value.map((o) => o.id)).toEqual([1])
     expect(orders.recentlyPickedUp.value).toHaveLength(0)
     expect(orders.errorMessage.value).not.toBeNull()
+  })
+
+  it('does not restore a picked-up order from a stale poll response', async () => {
+    const stalePoll = deferred<Response>()
+    const pickedUp = {
+      ...order(1, 'ready'),
+      status: 'picked_up' as const,
+      picked_up_at: '2026-07-04T12:05:00Z',
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(pageOf([order(1, 'ready')])))
+      .mockImplementationOnce(() => stalePoll.promise)
+      .mockResolvedValueOnce(jsonResponse({ data: pickedUp }))
+      .mockResolvedValueOnce(jsonResponse(pageOf([])))
+    vi.stubGlobal('fetch', fetchMock)
+    const orders = useOrders()
+    await orders.refreshNow()
+
+    const staleRefresh = orders.refreshNow()
+    await orders.markPickedUp(1)
+
+    stalePoll.resolve(jsonResponse(pageOf([order(1, 'ready')])))
+    await staleRefresh
+
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(orders.readyOrders.value).toHaveLength(0)
+    expect(orders.recentlyPickedUp.value.map((entry) => entry.id)).toEqual([1])
+    expect(orders.recentlyPickedUp.value[0]?.picked_up_at).toBe(
+      pickedUp.picked_up_at,
+    )
+  })
+
+  it('does not revert a ready order from a stale poll response', async () => {
+    const stalePoll = deferred<Response>()
+    const ready = {
+      ...order(1, 'ready'),
+      ready_at: '2026-07-04T12:10:00Z',
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(pageOf([order(1)])))
+      .mockImplementationOnce(() => stalePoll.promise)
+      .mockResolvedValueOnce(jsonResponse({ data: ready }))
+      .mockResolvedValueOnce(jsonResponse(pageOf([ready])))
+    vi.stubGlobal('fetch', fetchMock)
+    const orders = useOrders()
+    await orders.refreshNow()
+
+    const staleRefresh = orders.refreshNow()
+    await orders.markDone(1)
+
+    stalePoll.resolve(jsonResponse(pageOf([order(1)])))
+    await staleRefresh
+
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(orders.preparingOrders.value).toHaveLength(0)
+    expect(orders.readyOrders.value.map((entry) => entry.id)).toEqual([1])
+    expect(orders.readyOrders.value[0]?.ready_at).toBe(ready.ready_at)
+  })
+
+  it('coalesces overlapping refreshes into one follow-up poll', async () => {
+    const firstPoll = deferred<Response>()
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => firstPoll.promise)
+      .mockResolvedValueOnce(jsonResponse(pageOf([order(2)])))
+    vi.stubGlobal('fetch', fetchMock)
+    const orders = useOrders()
+
+    const first = orders.refreshNow()
+    const second = orders.refreshNow()
+    const third = orders.refreshNow()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    firstPoll.resolve(jsonResponse(pageOf([order(1)])))
+    await Promise.all([first, second, third])
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(orders.preparingOrders.value.map((entry) => entry.id)).toEqual([2])
   })
 
   it('reports the offline state when polling fails', async () => {
