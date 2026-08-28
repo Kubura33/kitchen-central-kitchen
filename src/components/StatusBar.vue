@@ -7,6 +7,7 @@ interface Props {
   lastUpdatedAt: Date | null
   soundEnabled: boolean
   userName: string
+  roleLabel?: string
 }
 
 interface Emits {
@@ -26,7 +27,7 @@ const lastUpdatedLabel = computed(() =>
   <header class="status-bar">
     <div class="status-brand">
       <span class="status-title">Central Kitchen</span>
-      <span class="status-subtitle">Kuhinja</span>
+      <span class="status-subtitle">{{ roleLabel ?? 'Kuhinja' }}</span>
     </div>
 
     <div class="status-info">

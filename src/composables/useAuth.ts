@@ -9,6 +9,7 @@ import {
   storeUser,
 } from '../api/client'
 import type { LoginResponse } from '../api/types'
+import { isCashierEmail } from '../config/cashiers'
 
 type KitchenUser = LoginResponse['user']
 
@@ -26,6 +27,9 @@ setUnauthorizedHandler(() => {
 
 export function useAuth() {
   const isAuthenticated = computed(() => token.value !== null)
+
+  /** Drives the cashier view only — see config/cashiers.ts, it grants nothing. */
+  const isCashier = computed(() => isCashierEmail(user.value?.email))
 
   async function login(email: string, password: string): Promise<void> {
     const response = await request<LoginResponse>('/login', {
@@ -58,6 +62,7 @@ export function useAuth() {
 
   return {
     isAuthenticated,
+    isCashier,
     user: readonly(user),
     login,
     logout,

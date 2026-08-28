@@ -7,7 +7,7 @@ import { useOrders } from '../composables/useOrders'
 import { useSound } from '../composables/useSound'
 import { groupOrdersByCompany } from '../utils/order-groups'
 
-const { user, logout } = useAuth()
+const { user, isCashier, logout } = useAuth()
 const sound = useSound()
 const {
   preparingOrders,
@@ -24,7 +24,13 @@ const {
   markDone,
   markPickedUp,
   acknowledgeNewOrder,
-} = useOrders({ onNewOrders: sound.playNewOrder })
+} = useOrders({
+  // The new-order chime announces incoming work for the kitchen; at the
+  // register it would fire for orders the cashier never sees.
+  onNewOrders: () => {
+    if (!isCashier.value) sound.playNewOrder()
+  },
+})
 
 onMounted(start)
 onBeforeUnmount(stop)
@@ -71,6 +77,7 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
       :last-updated-at="lastUpdatedAt"
       :sound-enabled="sound.enabled.value"
       :user-name="user?.name ?? ''"
+      :role-label="isCashier ? 'Kasa' : 'Kuhinja'"
       @toggle-sound="sound.toggle"
       @logout="logout"
     />
@@ -81,7 +88,7 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
       <p v-if="isLoading" class="orders-empty">Učitavanje porudžbina…</p>
 
       <template v-else>
-        <section class="orders-section">
+        <section v-if="!isCashier" class="orders-section">
           <h2 class="orders-heading">
             U pripremi
             <span class="orders-count">{{ preparingOrders.length }}</span>

@@ -50,6 +50,24 @@ describe('OrderCard', () => {
     expect(wrapper.text()).toContain('Bez luka.')
   })
 
+  it('breaks each line down into quantity, unit price and line total', () => {
+    const wrapper = mount(OrderCard, {
+      props: {
+        order: {
+          ...order,
+          lines: [{ ...order.lines[0], note: 'Bez kobasice.' }],
+        },
+        variant: 'preparing',
+      },
+    })
+
+    const line = wrapper.get('.order-line')
+    expect(line.get('.order-line-calc').text()).toBe('2 × 625 RSD =')
+    expect(line.get('.order-line-total').text()).toBe('1.250 RSD')
+    expect(line.get('.order-line-note').text()).toBe('Napomena: Bez kobasice.')
+    expect(wrapper.get('.order-total-value').text()).toBe('1.250 RSD')
+  })
+
   it('emits mark-done with the order id', async () => {
     const wrapper = mount(OrderCard, {
       props: { order, variant: 'preparing' },

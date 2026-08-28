@@ -13,9 +13,14 @@ const enabled = shallowRef(
 )
 
 /**
- * New-order chime with an explicit opt-in toggle. Browsers block audio until
- * a user gesture, so the toggle click itself plays a silent priming sound —
- * after that, polls may play the chime freely.
+ * New-order bell with an explicit opt-in toggle. Browsers block audio until a
+ * user gesture, so the toggle click itself plays a silent priming sound —
+ * after that, polls may play the bell freely.
+ *
+ * Playback stays on a plain audio element on purpose. Routing it through Web
+ * Audio for extra gain does not work here: the audio context starts suspended
+ * until a user gesture, and a buffer source started against a suspended
+ * context is simply lost. Loudness belongs in the asset itself.
  */
 export function useSound() {
   function toggle(): void {
