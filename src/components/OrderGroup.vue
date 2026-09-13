@@ -6,6 +6,7 @@ interface Props {
   orders: Order[]
   company: OrderCompany | null
   variant: 'preparing' | 'ready' | 'picked-up'
+  audience?: 'kitchen' | 'cashier'
   markingIds: ReadonlySet<number>
   newOrderIds?: ReadonlySet<number>
 }
@@ -36,6 +37,7 @@ const emit = defineEmits<Emits>()
         :key="order.id"
         :order="order"
         :variant="variant"
+        :audience="audience"
         :is-marking="markingIds.has(order.id)"
         :is-new="newOrderIds?.has(order.id)"
         @mark-done="emit('mark-done', $event)"

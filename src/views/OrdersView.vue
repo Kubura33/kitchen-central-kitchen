@@ -78,6 +78,7 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
       :sound-enabled="sound.enabled.value"
       :user-name="user?.name ?? ''"
       :role-label="isCashier ? 'Kasa' : 'Kuhinja'"
+      :show-sound-toggle="!isCashier"
       @toggle-sound="sound.toggle"
       @logout="logout"
     />
@@ -102,6 +103,7 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
             :orders="group.orders"
             :company="group.company"
             variant="preparing"
+            :audience="isCashier ? 'cashier' : 'kitchen'"
             :marking-ids="markingIds"
             :new-order-ids="newOrderIds"
             @mark-done="handleMarkDone"
@@ -135,6 +137,7 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
             :orders="group.orders"
             :company="group.company"
             variant="ready"
+            :audience="isCashier ? 'cashier' : 'kitchen'"
             :marking-ids="markingIds"
             @mark-picked-up="handleMarkPickedUp"
           />
@@ -148,6 +151,7 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
             :orders="group.orders"
             :company="group.company"
             variant="picked-up"
+            :audience="isCashier ? 'cashier' : 'kitchen'"
             :marking-ids="markingIds"
           />
         </section>

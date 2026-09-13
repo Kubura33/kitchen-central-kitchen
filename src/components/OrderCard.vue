@@ -6,6 +6,11 @@ import { formatRsd, formatTime } from '../utils/format'
 interface Props {
   order: Order
   variant: 'preparing' | 'ready' | 'picked-up'
+  /**
+   * Who the card is drawn for. The kitchen gets a prep ticket: no customer
+   * identity and no money, since neither changes what has to be cooked.
+   */
+  audience?: 'kitchen' | 'cashier'
   isMarking?: boolean
   isNew?: boolean
 }
@@ -15,7 +20,7 @@ interface Emits {
   'mark-picked-up': [orderId: number]
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { audience: 'cashier' })
 defineEmits<Emits>()
 
 const customerName = computed(() => {
@@ -31,6 +36,8 @@ const customerName = computed(() => {
 const paymentLabel = computed(() =>
   props.order.payment_method === 'card' ? 'Kartica' : 'Gotovina',
 )
+
+const isPrepTicket = computed(() => props.audience === 'kitchen')
 </script>
 
 <template>
@@ -39,10 +46,11 @@ const paymentLabel = computed(() =>
     :class="{
       'order-card--new': isNew,
       'order-card--muted': variant === 'picked-up',
+      'order-card--prep': isPrepTicket,
     }"
   >
     <header class="order-header">
-      <div class="order-identity">
+      <div v-if="!isPrepTicket" class="order-identity">
         <h3 class="order-customer">{{ customerName }}</h3>
         <p v-if="order.customer_phone" class="order-phone">
           {{ order.customer_phone }}
@@ -60,7 +68,7 @@ const paymentLabel = computed(() =>
       </div>
     </header>
 
-    <div class="order-meta">
+    <div v-if="!isPrepTicket" class="order-meta">
       <span class="order-chip">💳 {{ paymentLabel }}</span>
     </div>
 
@@ -77,7 +85,7 @@ const paymentLabel = computed(() =>
               ({{ line.side_dishes.join(', ') }})
             </span>
           </span>
-          <span class="order-line-price">
+          <span v-if="!isPrepTicket" class="order-line-price">
             <span class="order-line-calc">
               {{ line.quantity }} × {{ formatRsd(line.unit_price) }} =
             </span>
@@ -88,7 +96,7 @@ const paymentLabel = computed(() =>
       </li>
     </ul>
 
-    <div class="order-total">
+    <div v-if="!isPrepTicket" class="order-total">
       <span class="order-total-label">Ukupno</span>
       <span class="order-total-value">{{ formatRsd(order.total_price) }}</span>
     </div>
@@ -206,6 +214,16 @@ const paymentLabel = computed(() =>
   font-weight: 800;
   color: var(--ck-orange);
   font-variant-numeric: tabular-nums;
+}
+
+/* On a prep ticket nothing competes with it, so let it read from a distance. */
+.order-card--prep .order-arrival-time {
+  font-size: 32px;
+}
+
+/* Meals are the whole point of the ticket; give them the room the prices left. */
+.order-card--prep .order-line-main {
+  font-size: 18px;
 }
 
 .order-code {
@@ -328,6 +346,12 @@ const paymentLabel = computed(() =>
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
+  /*
+   * Cards in a grid row stretch to the tallest one, so a card with fewer
+   * lines or no note would otherwise leave its button floating mid-card.
+   * Soaking up the slack here keeps every button on the same baseline.
+   */
+  margin-top: auto;
 }
 
 .order-done-button {

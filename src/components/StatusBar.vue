@@ -8,6 +8,7 @@ interface Props {
   soundEnabled: boolean
   userName: string
   roleLabel?: string
+  showSoundToggle?: boolean
 }
 
 interface Emits {
@@ -15,7 +16,7 @@ interface Emits {
   logout: []
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { showSoundToggle: true })
 defineEmits<Emits>()
 
 const lastUpdatedLabel = computed(() =>
@@ -43,6 +44,7 @@ const lastUpdatedLabel = computed(() =>
 
     <div class="status-actions">
       <button
+        v-if="showSoundToggle"
         class="status-button"
         :class="{ 'status-button--active': soundEnabled }"
         type="button"

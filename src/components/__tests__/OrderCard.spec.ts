@@ -68,6 +68,36 @@ describe('OrderCard', () => {
     expect(wrapper.get('.order-total-value').text()).toBe('1.250 RSD')
   })
 
+  it('strips identity and pricing from the kitchen prep ticket', () => {
+    const wrapper = mount(OrderCard, {
+      props: {
+        order: {
+          ...order,
+          lines: [{ ...order.lines[0], note: 'Bez kobasice.' }],
+        },
+        variant: 'preparing',
+        audience: 'kitchen',
+      },
+    })
+
+    // Nothing that does not change what gets cooked.
+    expect(wrapper.find('.order-identity').exists()).toBe(false)
+    expect(wrapper.find('.order-line-price').exists()).toBe(false)
+    expect(wrapper.find('.order-total').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Jovana')
+    expect(wrapper.text()).not.toContain('0655555555')
+    expect(wrapper.text()).not.toContain('RSD')
+
+    // Everything the line cook works from.
+    expect(wrapper.text()).toContain('Dolazak')
+    expect(wrapper.text()).toContain('123456')
+    expect(wrapper.text()).toContain('2\u00d7')
+    expect(wrapper.text()).toContain('Pasulj sa kobasicom')
+    expect(wrapper.text()).toContain('kupus salata')
+    expect(wrapper.text()).toContain('Napomena: Bez kobasice.')
+    expect(wrapper.text()).toContain('Bez luka.')
+  })
+
   it('emits mark-done with the order id', async () => {
     const wrapper = mount(OrderCard, {
       props: { order, variant: 'preparing' },
