@@ -1,6 +1,7 @@
 import { computed, readonly, ref, shallowRef } from 'vue'
 import { request } from '../api/client'
 import type { Order, Paginated } from '../api/types'
+import { localDateKey } from '../utils/format'
 
 const POLL_INTERVAL_MS = 10_000
 const RECENTLY_PICKED_UP_TTL_MS = 5 * 60_000
@@ -12,8 +13,13 @@ export interface UseOrdersOptions {
 }
 
 /**
- * Polls the active order list (everything not yet picked up) and derives the
- * kitchen views from it: preparing, ready, and recently picked-up orders.
+ * Polls today's active order list (everything not yet picked up, due today)
+ * and derives the kitchen views from it: preparing, ready, and recently
+ * picked-up orders.
+ *
+ * Company orders are placed the evening before for the next delivery day, so
+ * the list is limited to today: tomorrow's company orders appear once their
+ * day starts, not the evening they are placed.
  *
  * Polling is the transport by design — the API lives on shared hosting with
  * no websocket process. The active list is small, so a full refetch every
@@ -32,6 +38,7 @@ export function useOrders(options: UseOrdersOptions = {}) {
   const markingIds = ref<Set<number>>(new Set())
 
   let knownIds: Set<number> | null = null
+  let loadedDay: string | null = null
   const pickedUpAt = new Map<number, number>()
   let timer: ReturnType<typeof setTimeout> | null = null
   let pollingPromise: Promise<void> | null = null
@@ -79,8 +86,9 @@ export function useOrders(options: UseOrdersOptions = {}) {
     const generationAtStart = mutationGeneration
 
     try {
+      const day = localDateKey(new Date())
       const page = await request<Paginated<Order>>('/orders', {
-        query: { status: 'pending', per_page: 100 },
+        query: { status: 'pending', per_page: 100, arrival_date: day },
       })
 
       isOnline.value = true
@@ -92,6 +100,13 @@ export function useOrders(options: UseOrdersOptions = {}) {
         generationAtStart === mutationGeneration &&
         markingIds.value.size === 0
       ) {
+        // A new day is a fresh start, like opening the dashboard: yesterday's
+        // leftovers dropping out of the list were not picked up.
+        if (loadedDay !== day) {
+          knownIds = null
+          newOrderIds.value = new Set()
+          loadedDay = day
+        }
         applyServerOrders(page.data)
         errorMessage.value = null
         lastUpdatedAt.value = new Date()
@@ -108,7 +123,13 @@ export function useOrders(options: UseOrdersOptions = {}) {
   function applyServerOrders(serverOrders: Order[]): void {
     const serverIds = new Set(serverOrders.map((order) => order.id))
 
-    if (knownIds !== null) {
+    if (knownIds === null) {
+      // Opening the dashboard (or a new day starting) announces the work
+      // already waiting, e.g. company orders placed the evening before.
+      if (serverOrders.some((order) => order.status === 'preparing')) {
+        onNewOrders?.()
+      }
+    } else {
       const fresh = serverOrders.filter((order) => !knownIds!.has(order.id))
       if (fresh.length > 0) {
         newOrderIds.value = new Set([

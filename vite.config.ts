@@ -13,7 +13,7 @@ export default defineConfig({
 
     proxy: {
       '/api': {
-        target: 'https://api.centralkitchen.rs',
+        target: 'https://api.penguincodes.com',
         changeOrigin: true,
         secure: true,
       },

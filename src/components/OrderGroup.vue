@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import OrderCard from './OrderCard.vue'
 import type { Order, OrderCompany } from '../api/types'
+import { formatWeekdayDate } from '../utils/format'
 
 interface Props {
   orders: Order[]
@@ -17,8 +19,13 @@ interface Emits {
   'acknowledge-new': [orderId: number]
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+// The day the company's meals are due; every order in the list is for today.
+const preparationDate = computed(() =>
+  formatWeekdayDate(props.orders[0]?.arrival_time ?? null),
+)
 </script>
 
 <template>
@@ -26,6 +33,7 @@ const emit = defineEmits<Emits>()
     <header v-if="company !== null" class="order-group-header">
       <div>
         <h3 class="order-group-name">{{ company.name }}</h3>
+        <p class="order-group-date">Za: {{ preparationDate }}</p>
         <p class="order-group-code">Kod kompanije: {{ company.code }}</p>
       </div>
       <span class="order-group-count">{{ orders.length }}</span>
@@ -75,6 +83,13 @@ const emit = defineEmits<Emits>()
   margin: 0;
   color: var(--ck-brown);
   font-size: 16px;
+}
+
+.order-group-date {
+  margin: 3px 0 0;
+  color: var(--ck-brown);
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .order-group-code {

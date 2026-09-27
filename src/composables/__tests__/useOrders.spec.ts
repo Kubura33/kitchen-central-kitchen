@@ -85,12 +85,63 @@ describe('useOrders', () => {
     const orders = useOrders({ onNewOrders })
 
     await orders.refreshNow()
-    expect(onNewOrders).not.toHaveBeenCalled()
+    // Opening the dashboard announces the work already waiting.
+    expect(onNewOrders).toHaveBeenCalledTimes(1)
 
     await orders.refreshNow()
-    expect(onNewOrders).toHaveBeenCalledTimes(1)
+    expect(onNewOrders).toHaveBeenCalledTimes(2)
     expect(orders.newOrderIds.value.has(2)).toBe(true)
     expect(orders.newOrderIds.value.has(1)).toBe(false)
+  })
+
+  it('asks only for orders due today', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 5, 9, 30))
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(pageOf([])))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await useOrders().refreshNow()
+
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://localhost')
+    expect(url.searchParams.get('arrival_date')).toBe('2026-10-05')
+    expect(url.searchParams.get('status')).toBe('pending')
+    vi.useRealTimers()
+  })
+
+  it('stays quiet on opening when nothing is waiting to be prepared', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(pageOf([order(1, 'ready')]))),
+    )
+    const onNewOrders = vi.fn()
+
+    await useOrders({ onNewOrders }).refreshNow()
+
+    expect(onNewOrders).not.toHaveBeenCalled()
+  })
+
+  it('starts a new day fresh instead of treating yesterday as picked up', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 4, 23, 59))
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(pageOf([order(1)])))
+      .mockResolvedValueOnce(jsonResponse(pageOf([order(2)])))
+    vi.stubGlobal('fetch', fetchMock)
+    const onNewOrders = vi.fn()
+    const orders = useOrders({ onNewOrders })
+
+    await orders.refreshNow()
+    vi.setSystemTime(new Date(2026, 9, 5, 0, 1))
+    await orders.refreshNow()
+
+    const url = new URL(String(fetchMock.mock.calls[1]?.[0]), 'http://localhost')
+    expect(url.searchParams.get('arrival_date')).toBe('2026-10-05')
+    // Yesterday's order left the list because the day ended, not because it
+    // was collected; the new day's waiting work is announced again.
+    expect(orders.recentlyPickedUp.value).toEqual([])
+    expect(onNewOrders).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
   })
 
   it('moves vanished orders into the recently picked-up list', async () => {
