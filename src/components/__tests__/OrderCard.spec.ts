@@ -11,6 +11,8 @@ const order: Order = {
   arrival_time: '2026-07-04T12:30:00Z',
   note: 'Bez luka.',
   payment_method: 'card',
+  payment_status: 'paid',
+  paid_at: '2026-07-04T11:01:00Z',
   total_price: '1250.00',
   company_id: 1,
   company: { id: 1, name: 'Penguin Codes', code: 'PGC12345' },
@@ -96,6 +98,41 @@ describe('OrderCard', () => {
     expect(wrapper.text()).toContain('kupus salata')
     expect(wrapper.text()).toContain('Napomena: Bez kobasice.')
     expect(wrapper.text()).toContain('Bez luka.')
+  })
+
+  it('tells the cashier a card order is already paid', () => {
+    const wrapper = mount(OrderCard, {
+      props: { order, variant: 'ready' },
+    })
+
+    expect(wrapper.find('.order-payment--paid').text()).toBe('✓ Plaćeno karticom')
+    expect(wrapper.find('.order-payment--cash').exists()).toBe(false)
+  })
+
+  it('tells the cashier how much cash to collect', () => {
+    const wrapper = mount(OrderCard, {
+      props: {
+        order: {
+          ...order,
+          payment_method: 'cash',
+          payment_status: 'not_required',
+          paid_at: null,
+        },
+        variant: 'ready',
+      },
+    })
+
+    expect(wrapper.find('.order-payment--cash').text()).toBe(
+      'Gotovina · naplatiti 1.250 RSD',
+    )
+  })
+
+  it('keeps payment off the kitchen prep ticket', () => {
+    const wrapper = mount(OrderCard, {
+      props: { order, variant: 'preparing', audience: 'kitchen' },
+    })
+
+    expect(wrapper.find('.order-payment').exists()).toBe(false)
   })
 
   it('emits mark-done with the order id', async () => {

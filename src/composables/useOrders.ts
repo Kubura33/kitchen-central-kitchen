@@ -1,6 +1,7 @@
 import { computed, readonly, ref, shallowRef } from 'vue'
 import { request } from '../api/client'
 import type { Order, Paginated } from '../api/types'
+import { isPreparable } from '../utils/payment'
 
 const POLL_INTERVAL_MS = 10_000
 const RECENTLY_PICKED_UP_TTL_MS = 5 * 60_000
@@ -92,7 +93,7 @@ export function useOrders(options: UseOrdersOptions = {}) {
         generationAtStart === mutationGeneration &&
         markingIds.value.size === 0
       ) {
-        applyServerOrders(page.data)
+        applyServerOrders(page.data.filter(isPreparable))
         errorMessage.value = null
         lastUpdatedAt.value = new Date()
       }

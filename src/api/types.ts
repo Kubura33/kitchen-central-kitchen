@@ -2,6 +2,17 @@
 
 export type OrderStatus = 'preparing' | 'ready' | 'picked_up'
 
+/**
+ * `not_required` is cash on pickup; a card order is `pending` until the bank
+ * confirms it and only reaches the kitchen once `paid`.
+ */
+export type PaymentStatus =
+  | 'not_required'
+  | 'pending'
+  | 'paid'
+  | 'expired'
+  | 'cancelled'
+
 export interface OrderLine {
   id: number
   meal_id: number | null
@@ -27,6 +38,8 @@ export interface Order {
   arrival_time: string | null
   note: string | null
   payment_method: 'cash' | 'card'
+  payment_status: PaymentStatus
+  paid_at: string | null
   total_price: string
   company_id: number | null
   company?: OrderCompany | null

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { Order } from '../api/types'
 import { formatRsd, formatTime } from '../utils/format'
+import { isPaidByCard } from '../utils/payment'
 
 interface Props {
   order: Order
@@ -33,8 +34,15 @@ const customerName = computed(() => {
   return name === '' ? 'Gost' : name
 })
 
+/**
+ * The cashier's one question at the counter: is this already paid, or how
+ * much to collect.
+ */
+const isPaid = computed(() => isPaidByCard(props.order))
 const paymentLabel = computed(() =>
-  props.order.payment_method === 'card' ? 'Kartica' : 'Gotovina',
+  isPaid.value
+    ? '✓ Plaćeno karticom'
+    : `Gotovina · naplatiti ${formatRsd(props.order.total_price)}`,
 )
 
 const isPrepTicket = computed(() => props.audience === 'kitchen')
@@ -69,7 +77,12 @@ const isPrepTicket = computed(() => props.audience === 'kitchen')
     </header>
 
     <div v-if="!isPrepTicket" class="order-meta">
-      <span class="order-chip">💳 {{ paymentLabel }}</span>
+      <span
+        class="order-payment"
+        :class="isPaid ? 'order-payment--paid' : 'order-payment--cash'"
+      >
+        {{ paymentLabel }}
+      </span>
     </div>
 
     <ul class="order-lines">
@@ -244,12 +257,21 @@ const isPrepTicket = computed(() => props.audience === 'kitchen')
   gap: 8px;
 }
 
-.order-chip {
-  background: var(--ck-bg);
+.order-payment {
   border-radius: var(--ck-radius-chip);
-  padding: 4px 12px;
-  font-size: 13px;
-  color: var(--ck-text-secondary);
+  padding: 6px 14px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.order-payment--paid {
+  background: rgb(29 114 53 / 0.12);
+  color: var(--ck-green);
+}
+
+.order-payment--cash {
+  background: var(--ck-orange-selected);
+  color: var(--ck-brown);
 }
 
 .order-lines {

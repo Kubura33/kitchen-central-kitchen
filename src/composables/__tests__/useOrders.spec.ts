@@ -12,6 +12,8 @@ function order(id: number, status: 'preparing' | 'ready' = 'preparing'): Order {
     arrival_time: '2026-07-04T12:30:00Z',
     note: null,
     payment_method: 'cash',
+    payment_status: 'not_required',
+    paid_at: null,
     total_price: '500.00',
     company_id: null,
     company: null,
@@ -91,6 +93,26 @@ describe('useOrders', () => {
     expect(onNewOrders).toHaveBeenCalledTimes(1)
     expect(orders.newOrderIds.value.has(2)).toBe(true)
     expect(orders.newOrderIds.value.has(1)).toBe(false)
+  })
+
+  it('never shows a card order the bank has not confirmed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          pageOf([
+            order(1),
+            { ...order(2), payment_method: 'card', payment_status: 'pending' },
+            { ...order(3), payment_method: 'card', payment_status: 'paid' },
+          ]),
+        ),
+      ),
+    )
+    const orders = useOrders()
+
+    await orders.refreshNow()
+
+    expect(orders.preparingOrders.value.map((o) => o.id).sort()).toEqual([1, 3])
   })
 
   it('moves vanished orders into the recently picked-up list', async () => {
