@@ -17,6 +17,7 @@ interface Emits {
   'mark-done': [orderId: number]
   'mark-picked-up': [orderId: number]
   'acknowledge-new': [orderId: number]
+  'set-prepared': [orderId: number, lineId: number, count: number]
 }
 
 const props = defineProps<Props>()
@@ -50,6 +51,8 @@ const preparationDate = computed(() =>
         :is-new="newOrderIds?.has(order.id)"
         @mark-done="emit('mark-done', $event)"
         @mark-picked-up="emit('mark-picked-up', $event)"
+        @set-prepared="(orderId, lineId, count) =>
+          emit('set-prepared', orderId, lineId, count)"
         @click="emit('acknowledge-new', order.id)"
       />
     </div>

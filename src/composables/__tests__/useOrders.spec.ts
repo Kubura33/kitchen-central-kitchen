@@ -25,6 +25,30 @@ function order(id: number, status: 'preparing' | 'ready' = 'preparing'): Order {
   }
 }
 
+function orderWithLine(
+  id: number,
+  quantity: number,
+  prepared: number,
+  status: 'preparing' | 'ready' = 'preparing',
+): Order {
+  return {
+    ...order(id, status),
+    lines: [
+      {
+        id: 50,
+        meal_id: 9,
+        meal_name: 'Pasulj',
+        quantity,
+        prepared_quantity: prepared,
+        unit_price: '500.00',
+        line_total: '500.00',
+        side_dishes: null,
+        note: null,
+      },
+    ],
+  }
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -329,5 +353,97 @@ describe('useOrders', () => {
 
     expect(orders.isOnline.value).toBe(false)
     expect(orders.errorMessage.value).not.toBeNull()
+  })
+  describe('setPrepared', () => {
+    it('shows the count at once and adopts the order the API returns', async () => {
+      const patch = deferred<Response>()
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(pageOf([orderWithLine(1, 3, 0)])))
+        .mockImplementationOnce(() => patch.promise)
+        .mockResolvedValue(jsonResponse(pageOf([orderWithLine(1, 3, 1)])))
+      vi.stubGlobal('fetch', fetchMock)
+      const orders = useOrders()
+      await orders.refreshNow()
+
+      const done = orders.setPrepared(1, 50, 1)
+
+      expect(orders.preparingOrders.value[0]?.lines[0]?.prepared_quantity).toBe(1)
+      patch.resolve(jsonResponse({ data: orderWithLine(1, 3, 1) }))
+      await done
+      await flushPromises()
+
+      const patchCall = fetchMock.mock.calls[1]
+      expect(String(patchCall?.[0])).toContain('/orders/1/lines/50/prepared')
+      expect(patchCall?.[1]?.method).toBe('PATCH')
+      expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+        prepared_quantity: 1,
+      })
+    })
+
+    it('moves the order to ready when the API marks it ready', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(pageOf([orderWithLine(1, 1, 0)])))
+        .mockResolvedValueOnce(
+          jsonResponse({ data: orderWithLine(1, 1, 1, 'ready') }),
+        )
+        .mockResolvedValue(
+          jsonResponse(pageOf([orderWithLine(1, 1, 1, 'ready')])),
+        )
+      vi.stubGlobal('fetch', fetchMock)
+      const orders = useOrders()
+      await orders.refreshNow()
+
+      await orders.setPrepared(1, 50, 1)
+      await flushPromises()
+
+      expect(orders.preparingOrders.value).toHaveLength(0)
+      expect(orders.readyOrders.value.map((o) => o.id)).toEqual([1])
+    })
+
+    it('sends rapid taps on one line in order, only the newest count', async () => {
+      const first = deferred<Response>()
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(pageOf([orderWithLine(1, 3, 0)])))
+        .mockImplementationOnce(() => first.promise)
+        .mockResolvedValueOnce(jsonResponse({ data: orderWithLine(1, 3, 3) }))
+        .mockResolvedValue(jsonResponse(pageOf([orderWithLine(1, 3, 3)])))
+      vi.stubGlobal('fetch', fetchMock)
+      const orders = useOrders()
+      await orders.refreshNow()
+
+      const tapOne = orders.setPrepared(1, 50, 1)
+      const tapTwo = orders.setPrepared(1, 50, 2)
+      const tapThree = orders.setPrepared(1, 50, 3)
+      first.resolve(jsonResponse({ data: orderWithLine(1, 3, 1) }))
+      await Promise.all([tapOne, tapTwo, tapThree])
+
+      const bodies = fetchMock.mock.calls
+        .slice(1, 3)
+        .map((call) => JSON.parse(String(call[1]?.body)).prepared_quantity)
+      expect(bodies).toEqual([1, 3])
+      expect(orders.preparingOrders.value[0]?.lines[0]?.prepared_quantity).toBe(3)
+    })
+
+    it('reports a failure and falls back to what the server says', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(pageOf([orderWithLine(1, 3, 0)])))
+        .mockResolvedValueOnce(
+          jsonResponse({ message: 'Porudzbina je vec spremna.' }, 422),
+        )
+        .mockResolvedValue(jsonResponse(pageOf([orderWithLine(1, 3, 0)])))
+      vi.stubGlobal('fetch', fetchMock)
+      const orders = useOrders()
+      await orders.refreshNow()
+
+      await expect(orders.setPrepared(1, 50, 1)).rejects.toThrow()
+      await flushPromises()
+
+      expect(orders.errorMessage.value).toBe('Porudzbina je vec spremna.')
+      expect(orders.preparingOrders.value[0]?.lines[0]?.prepared_quantity).toBe(0)
+    })
   })
 })

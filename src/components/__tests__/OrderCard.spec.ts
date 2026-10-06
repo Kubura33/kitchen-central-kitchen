@@ -24,6 +24,7 @@ const order: Order = {
       meal_id: 3,
       meal_name: 'Pasulj sa kobasicom',
       quantity: 2,
+      prepared_quantity: 1,
       unit_price: '625.00',
       line_total: '1250.00',
       side_dishes: ['kupus salata'],
@@ -91,29 +92,77 @@ describe('OrderCard', () => {
     // Everything the line cook works from.
     expect(wrapper.text()).toContain('Dolazak')
     expect(wrapper.text()).toContain('123456')
-    expect(wrapper.text()).toContain('2\u00d7')
+    expect(wrapper.text()).toContain('2/2')
     expect(wrapper.text()).toContain('Pasulj sa kobasicom')
     expect(wrapper.text()).toContain('kupus salata')
     expect(wrapper.text()).toContain('Napomena: Bez kobasice.')
     expect(wrapper.text()).toContain('Bez luka.')
   })
 
-  it('emits mark-done with the order id', async () => {
+  it('emits mark-done from the mark-all button on the kitchen ticket', async () => {
     const wrapper = mount(OrderCard, {
-      props: { order, variant: 'preparing' },
+      props: { order, variant: 'preparing', audience: 'kitchen' },
     })
 
-    await wrapper.get('button').trigger('click')
+    const button = wrapper.get('.order-done-button')
+    expect(button.text()).toBe('Označi sve kao gotovo')
+    await button.trigger('click')
 
     expect(wrapper.emitted('mark-done')).toEqual([[7]])
   })
 
-  it('disables the button while marking', () => {
+  it('disables the buttons while marking', () => {
     const wrapper = mount(OrderCard, {
-      props: { order, variant: 'preparing', isMarking: true },
+      props: {
+        order,
+        variant: 'preparing',
+        audience: 'kitchen',
+        isMarking: true,
+      },
     })
 
-    expect(wrapper.get('button').attributes('disabled')).toBeDefined()
+    for (const button of wrapper.findAll('button')) {
+      expect(button.attributes('disabled')).toBeDefined()
+    }
+  })
+
+  it('draws one card per portion, open ones first', () => {
+    const wrapper = mount(OrderCard, {
+      props: { order, variant: 'preparing', audience: 'kitchen' },
+    })
+
+    const portions = wrapper.findAll('.portion')
+    expect(portions).toHaveLength(2)
+    expect(portions[0]?.classes()).not.toContain('portion--done')
+    expect(portions[0]?.text()).toContain('2/2')
+    expect(portions[1]?.classes()).toContain('portion--done')
+    expect(wrapper.text()).toContain('1/2 gotovo')
+  })
+
+  it('emits set-prepared one higher for an open portion and one lower for a done one', async () => {
+    const wrapper = mount(OrderCard, {
+      props: { order, variant: 'preparing', audience: 'kitchen' },
+    })
+
+    const [open, done] = wrapper.findAll('.portion-button')
+    await open?.trigger('click')
+    await done?.trigger('click')
+
+    expect(wrapper.emitted('set-prepared')).toEqual([
+      [7, 11, 2],
+      [7, 11, 0],
+    ])
+  })
+
+  it('shows the cashier progress without any way to change it', () => {
+    const wrapper = mount(OrderCard, {
+      props: { order, variant: 'preparing', audience: 'cashier' },
+    })
+
+    expect(wrapper.text()).toContain('1/2 gotovo')
+    expect(wrapper.get('.order-line-progress').text()).toBe('1/2')
+    expect(wrapper.text()).toContain('U pripremi')
+    expect(wrapper.find('button').exists()).toBe(false)
   })
 
   it('emits mark-picked-up from the ready-variant button', async () => {
