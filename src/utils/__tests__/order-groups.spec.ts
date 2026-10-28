@@ -14,6 +14,8 @@ function order(
     arrival_time: null,
     note: null,
     payment_method: 'cash',
+    payment_status: 'not_required',
+    paid_at: null,
     total_price: '500.00',
     company_id: company?.id ?? null,
     company,

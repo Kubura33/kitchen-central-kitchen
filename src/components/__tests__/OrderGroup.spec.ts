@@ -12,6 +12,8 @@ function companyOrder(arrivalTime: string): Order {
     arrival_time: arrivalTime,
     note: null,
     payment_method: 'cash',
+    payment_status: 'not_required',
+    paid_at: null,
     total_price: '500.00',
     company_id: 3,
     company: { id: 3, name: '3Lateral', code: 'LATERAL3' },
