@@ -1,6 +1,7 @@
 import { computed, readonly, ref, shallowRef } from 'vue'
 import { request } from '../api/client'
 import type { Order, Paginated } from '../api/types'
+import { localDateKey } from '../utils/format'
 import { isPreparable } from '../utils/payment'
 
 const POLL_INTERVAL_MS = 10_000
@@ -13,8 +14,13 @@ export interface UseOrdersOptions {
 }
 
 /**
- * Polls the active order list (everything not yet picked up) and derives the
- * kitchen views from it: preparing, ready, and recently picked-up orders.
+ * Polls today's active order list (everything not yet picked up, due today)
+ * and derives the kitchen views from it: preparing, ready, and recently
+ * picked-up orders.
+ *
+ * Company orders are placed the evening before for the next delivery day, so
+ * the list is limited to today: tomorrow's company orders appear once their
+ * day starts, not the evening they are placed.
  *
  * Polling is the transport by design — the API lives on shared hosting with
  * no websocket process. The active list is small, so a full refetch every
@@ -31,8 +37,12 @@ export function useOrders(options: UseOrdersOptions = {}) {
   const errorMessage = shallowRef<string | null>(null)
   const newOrderIds = ref<Set<number>>(new Set())
   const markingIds = ref<Set<number>>(new Set())
+  // Portion writes in flight, keyed by line. Taps on one line are sent one at
+  // a time with only the newest count, so they cannot arrive out of order.
+  const lineWrites = new Map<number, { latest: number }>()
 
   let knownIds: Set<number> | null = null
+  let loadedDay: string | null = null
   const pickedUpAt = new Map<number, number>()
   let timer: ReturnType<typeof setTimeout> | null = null
   let pollingPromise: Promise<void> | null = null
@@ -80,8 +90,9 @@ export function useOrders(options: UseOrdersOptions = {}) {
     const generationAtStart = mutationGeneration
 
     try {
+      const day = localDateKey(new Date())
       const page = await request<Paginated<Order>>('/orders', {
-        query: { status: 'pending', per_page: 100 },
+        query: { status: 'pending', per_page: 100, arrival_date: day },
       })
 
       isOnline.value = true
@@ -91,8 +102,16 @@ export function useOrders(options: UseOrdersOptions = {}) {
       // fresh poll after its PATCH succeeds.
       if (
         generationAtStart === mutationGeneration &&
-        markingIds.value.size === 0
+        markingIds.value.size === 0 &&
+        lineWrites.size === 0
       ) {
+        // A new day is a fresh start, like opening the dashboard: yesterday's
+        // leftovers dropping out of the list were not picked up.
+        if (loadedDay !== day) {
+          knownIds = null
+          newOrderIds.value = new Set()
+          loadedDay = day
+        }
         applyServerOrders(page.data.filter(isPreparable))
         errorMessage.value = null
         lastUpdatedAt.value = new Date()
@@ -109,7 +128,13 @@ export function useOrders(options: UseOrdersOptions = {}) {
   function applyServerOrders(serverOrders: Order[]): void {
     const serverIds = new Set(serverOrders.map((order) => order.id))
 
-    if (knownIds !== null) {
+    if (knownIds === null) {
+      // Opening the dashboard (or a new day starting) announces the work
+      // already waiting, e.g. company orders placed the evening before.
+      if (serverOrders.some((order) => order.status === 'preparing')) {
+        onNewOrders?.()
+      }
+    } else {
       const fresh = serverOrders.filter((order) => !knownIds!.has(order.id))
       if (fresh.length > 0) {
         newOrderIds.value = new Set([
@@ -171,7 +196,15 @@ export function useOrders(options: UseOrdersOptions = {}) {
     // Optimistic move to the ready column; rolled back on failure.
     orders.value = orders.value.map((order) =>
       order.id === orderId
-        ? { ...order, status: 'ready' as const, ready_at: new Date().toISOString() }
+        ? {
+            ...order,
+            status: 'ready' as const,
+            ready_at: new Date().toISOString(),
+            lines: order.lines.map((line) => ({
+              ...line,
+              prepared_quantity: line.quantity,
+            })),
+          }
         : order,
     )
 
@@ -196,6 +229,80 @@ export function useOrders(options: UseOrdersOptions = {}) {
       markingIds.value = next
       mutationGeneration += 1
       if (succeeded) void poll()
+    }
+  }
+
+  function patchLine(orderId: number, lineId: number, count: number): void {
+    orders.value = orders.value.map((order) =>
+      order.id === orderId
+        ? {
+            ...order,
+            lines: order.lines.map((line) =>
+              line.id === lineId ? { ...line, prepared_quantity: count } : line,
+            ),
+          }
+        : order,
+    )
+  }
+
+  /**
+   * Sets how many portions of a line are done. The API marks the order ready
+   * by itself once the last portion of the last line is, and answers with the
+   * order, so that is also how the card moves to the ready section.
+   *
+   * Not rolled back on failure: other taps may have landed meanwhile, so the
+   * list is simply refetched, which is the server's word on what is done.
+   */
+  async function setPrepared(
+    orderId: number,
+    lineId: number,
+    count: number,
+  ): Promise<void> {
+    patchLine(orderId, lineId, count)
+
+    const pending = lineWrites.get(lineId)
+    if (pending !== undefined) {
+      pending.latest = count
+      return
+    }
+
+    const write = { latest: count }
+    lineWrites.set(lineId, write)
+    mutationGeneration += 1
+    let failure: string | null = null
+
+    try {
+      let sent: number
+      do {
+        sent = write.latest
+        const response = await request<{ data: Order }>(
+          `/orders/${orderId}/lines/${lineId}/prepared`,
+          { method: 'PATCH', body: { prepared_quantity: sent } },
+        )
+        // A newer tap is already on screen; adopting this older answer would
+        // flicker the card back.
+        if (sent === write.latest) {
+          orders.value = orders.value.map((order) =>
+            order.id === orderId ? response.data : order,
+          )
+          if (response.data.status !== 'preparing') acknowledgeNewOrder(orderId)
+        }
+      } while (sent !== write.latest)
+    } catch (error) {
+      failure =
+        error instanceof Error ? error.message : 'Označavanje nije uspelo.'
+      throw error
+    } finally {
+      lineWrites.delete(lineId)
+      mutationGeneration += 1
+      const resync = poll()
+      // A successful resync clears the error banner, so show this one after it.
+      if (failure !== null) {
+        const message = failure
+        void resync.then(() => {
+          errorMessage.value = message
+        })
+      }
     }
   }
 
@@ -306,6 +413,7 @@ export function useOrders(options: UseOrdersOptions = {}) {
     refreshNow,
     markDone,
     markPickedUp,
+    setPrepared,
     acknowledgeNewOrder,
   }
 }

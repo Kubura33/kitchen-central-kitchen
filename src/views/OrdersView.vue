@@ -23,6 +23,7 @@ const {
   stop,
   markDone,
   markPickedUp,
+  setPrepared,
   acknowledgeNewOrder,
 } = useOrders({
   // The new-order chime announces incoming work for the kitchen; at the
@@ -61,6 +62,18 @@ async function handleMarkDone(orderId: number): Promise<void> {
   }
 }
 
+async function handleSetPrepared(
+  orderId: number,
+  lineId: number,
+  count: number,
+): Promise<void> {
+  try {
+    await setPrepared(orderId, lineId, count)
+  } catch {
+    // The error is already surfaced through errorMessage.
+  }
+}
+
 async function handleMarkPickedUp(orderId: number): Promise<void> {
   try {
     await markPickedUp(orderId)
@@ -89,7 +102,7 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
       <p v-if="isLoading" class="orders-empty">Učitavanje porudžbina…</p>
 
       <template v-else>
-        <section v-if="!isCashier" class="orders-section">
+        <section class="orders-section">
           <h2 class="orders-heading">
             U pripremi
             <span class="orders-count">{{ preparingOrders.length }}</span>
@@ -107,6 +120,7 @@ async function handleMarkPickedUp(orderId: number): Promise<void> {
             :marking-ids="markingIds"
             :new-order-ids="newOrderIds"
             @mark-done="handleMarkDone"
+            @set-prepared="handleSetPrepared"
             @acknowledge-new="acknowledgeNewOrder"
           />
         </section>

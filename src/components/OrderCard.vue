@@ -2,6 +2,9 @@
 import { computed } from 'vue'
 import type { Order } from '../api/types'
 import { formatRsd, formatTime } from '../utils/format'
+import { lineProgress, orderProgress } from '../utils/order-progress'
+import OrderProgress from './OrderProgress.vue'
+import PortionList from './PortionList.vue'
 import { isPaidByCard } from '../utils/payment'
 
 interface Props {
@@ -19,6 +22,7 @@ interface Props {
 interface Emits {
   'mark-done': [orderId: number]
   'mark-picked-up': [orderId: number]
+  'set-prepared': [orderId: number, lineId: number, count: number]
 }
 
 const props = withDefaults(defineProps<Props>(), { audience: 'cashier' })
@@ -39,13 +43,15 @@ const customerName = computed(() => {
  * much to collect.
  */
 const isPaid = computed(() => isPaidByCard(props.order))
-const paymentLabel = computed(() =>
-  isPaid.value
-    ? '✓ Plaćeno karticom'
-    : `Gotovina · naplatiti ${formatRsd(props.order.total_price)}`,
-)
+const paymentLabel = computed(() => {
+  if (isPaid.value) return '✓ Plaćeno karticom'
+  const method = props.order.payment_method === 'card' ? 'Kartica' : 'Gotovina'
+  return `${method} · naplatiti ${formatRsd(props.order.total_price)}`
+})
 
 const isPrepTicket = computed(() => props.audience === 'kitchen')
+const isPreparing = computed(() => props.variant === 'preparing')
+const progress = computed(() => orderProgress(props.order))
 </script>
 
 <template>
@@ -85,7 +91,21 @@ const isPrepTicket = computed(() => props.audience === 'kitchen')
       </span>
     </div>
 
-    <ul class="order-lines">
+    <OrderProgress
+      v-if="isPreparing"
+      :done="progress.done"
+      :total="progress.total"
+    />
+
+    <PortionList
+      v-if="isPreparing && isPrepTicket"
+      :order="order"
+      :disabled="isMarking"
+      @set-prepared="(orderId, lineId, count) =>
+        $emit('set-prepared', orderId, lineId, count)"
+    />
+
+    <ul v-else class="order-lines">
       <li v-for="line in order.lines" :key="line.id" class="order-line">
         <div class="order-line-main">
           <span class="order-line-qty">{{ line.quantity }}×</span>
@@ -97,6 +117,16 @@ const isPrepTicket = computed(() => props.audience === 'kitchen')
             >
               ({{ line.side_dishes.join(', ') }})
             </span>
+          </span>
+          <span
+            v-if="isPreparing"
+            class="order-line-progress"
+            :class="{
+              'order-line-progress--done':
+                lineProgress(line, order).done === line.quantity,
+            }"
+          >
+            {{ lineProgress(line, order).done }}/{{ line.quantity }}
           </span>
           <span v-if="!isPrepTicket" class="order-line-price">
             <span class="order-line-calc">
@@ -118,14 +148,17 @@ const isPrepTicket = computed(() => props.audience === 'kitchen')
 
     <footer class="order-footer">
       <button
-        v-if="variant === 'preparing'"
+        v-if="variant === 'preparing' && isPrepTicket"
         class="order-done-button"
         type="button"
         :disabled="isMarking"
         @click="$emit('mark-done', order.id)"
       >
-        {{ isMarking ? 'Označavanje…' : 'Označi kao gotovo' }}
+        {{ isMarking ? 'Označavanje…' : 'Označi sve kao gotovo' }}
       </button>
+      <span v-else-if="variant === 'preparing'" class="order-preparing-tag">
+        U pripremi
+      </span>
       <template v-else-if="variant === 'ready'">
         <span class="order-ready-tag">✓ Spremno</span>
         <button
@@ -323,6 +356,22 @@ const isPrepTicket = computed(() => props.audience === 'kitchen')
   font-weight: 700;
 }
 
+.order-line-progress {
+  padding: 1px 10px;
+  border-radius: var(--ck-radius-chip);
+  background: var(--ck-bg);
+  color: var(--ck-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.order-line-progress--done {
+  background: rgb(29 114 53 / 0.12);
+  color: var(--ck-green);
+}
+
 .order-line-note {
   margin: 4px 0 0 38px;
   color: var(--ck-text-secondary);
@@ -423,6 +472,12 @@ const isPrepTicket = computed(() => props.audience === 'kitchen')
 .order-pickup-button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.order-preparing-tag {
+  color: var(--ck-orange);
+  font-weight: 700;
+  font-size: 14px;
 }
 
 .order-picked-up-tag {

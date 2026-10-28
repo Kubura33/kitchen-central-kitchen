@@ -18,6 +18,8 @@ export interface OrderLine {
   meal_id: number | null
   meal_name: string
   quantity: number
+  /** Portions the kitchen has finished, 0..quantity. */
+  prepared_quantity: number
   unit_price: string
   line_total: string
   side_dishes: string[] | null
@@ -68,6 +70,6 @@ export interface LoginResponse {
     id: number
     name: string
     email: string
-    role: 'admin' | 'kitchen'
+    role: 'admin' | 'kitchen' | 'manager'
   }
 }
